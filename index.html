@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-PT">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,12 +8,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- Atualização do servidor de importação (esm.sh) para garantir o carregamento do Motor 3D -->
+    <!-- Mudança para a rede jsDelivr com compilação +esm (Altamente fiável para o motor 3D) -->
     <script type="importmap">
       {
         "imports": {
-          "three": "https://esm.sh/three@0.160.0",
-          "openbim-components": "https://esm.sh/openbim-components@2.2.0"
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/+esm",
+          "openbim-components": "https://cdn.jsdelivr.net/npm/openbim-components@2.2.0/+esm"
         }
       }
     </script>
@@ -47,8 +47,7 @@
 </head>
 <body>
     
-    <div id="erro-global" style="display: none; position: absolute; top: 0; left: 0; width: 100%; background-color: #ff4444; color: white; padding: 15px; z-index: 9999; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
-    </div>
+    <div id="erro-global" style="display: none; position: absolute; top: 0; left: 0; width: 100%; background-color: #ff4444; color: white; padding: 15px; z-index: 9999; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
 
     <div class="dashboard-container">
         <header class="header">
@@ -134,10 +133,11 @@
                         if (isNaN(areaValue)) areaValue = 0;
                         totalArea += areaValue;
 
-                        const tipo = item.tipo_area_urbanizada || 'Indefinido';
+                        // Tratamento extra para prevenir dados vazios no gráfico
+                        const tipo = (item.tipo_area_urbanizada && item.tipo_area_urbanizada !== "Não definido") ? item.tipo_area_urbanizada : 'Não Classificado';
                         tiposCount[tipo] = (tiposCount[tipo] || 0) + areaValue;
 
-                        const ocupante = item.ocupante || 'Indefinido';
+                        const ocupante = (item.ocupante && item.ocupante !== "Não definido") ? item.ocupante : 'Sem Ocupante';
                         ocupantesArea[ocupante] = (ocupantesArea[ocupante] || 0) + areaValue;
                     });
 
@@ -158,8 +158,8 @@
                     alert("Erro ao ler o ficheiro JSON: " + err.message);
                 }
             };
-            // Força a leitura do arquivo respeitando acentuação (UTF-8)
-            reader.readAsText(file, 'UTF-8');
+            // Correção da codificação para o formato do Windows (resolve os  nos gráficos)
+            reader.readAsText(file, 'windows-1252');
         });
 
         async function load3DEngine() {
@@ -219,7 +219,7 @@
                         document.getElementById('lbl-ifc').style.backgroundColor = '#7b71d9';
                         document.getElementById('lbl-ifc').innerText = '✓ IFC Carregado';
                     } catch (error) {
-                        alert("Erro crítico ao renderizar o IFC: " + error.message);
+                        alert("Erro ao renderizar o IFC. A geometria pode ser demasiado complexa para a web.");
                         console.error(error);
                     } finally {
                         overlay.style.display = 'none';
@@ -233,7 +233,8 @@
             } catch (err) {
                 const errDiv = document.getElementById('erro-global');
                 errDiv.style.display = 'block';
-                errDiv.innerHTML = "<strong>AVISO:</strong> O motor 3D não pôde ser iniciado (" + err.message + "). Pode continuar a utilizar os gráficos JSON normalmente.";
+                errDiv.innerHTML = "<strong>AVISO:</strong> O motor 3D não pôde ser iniciado. Erro de ligação ao jsDelivr. Pode continuar a utilizar os gráficos JSON normalmente.";
+                console.error(err);
             }
         }
 
