@@ -8,12 +8,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- Importação automática da última versão estável (sem bloquear o número da versão) -->
+    <!-- Bloqueio rigoroso da versão do Three.js a 0.160.0 para evitar incompatibilidades -->
     <script type="importmap">
       {
         "imports": {
           "three": "https://esm.sh/three@0.160.0",
-          "openbim-components": "https://esm.sh/openbim-components"
+          "openbim-components": "https://esm.sh/openbim-components@2.2.0?deps=three@0.160.0"
         }
       }
     </script>
