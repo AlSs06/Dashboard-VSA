@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-PT">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,11 +8,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+    <!-- Atualização do servidor de importação (esm.sh) para garantir o carregamento do Motor 3D -->
     <script type="importmap">
       {
         "imports": {
-          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-          "openbim-components": "https://unpkg.com/openbim-components@2.2.0/openbim-components.js"
+          "three": "https://esm.sh/three@0.160.0",
+          "openbim-components": "https://esm.sh/openbim-components@2.2.0"
         }
       }
     </script>
@@ -89,7 +90,6 @@
     </div>
 
     <script type="module">
-        // 1. CONFIGURAÇÃO INDEPENDENTE DO JSON E GRÁFICOS
         let chartTiposInstance = null;
         let chartOcupantesInstance = null;
         const colorPalette = ['#7b71d9', '#5a51a8', '#9d94ed', '#423b82', '#b8b2f2', '#342f5c'];
@@ -158,10 +158,10 @@
                     alert("Erro ao ler o ficheiro JSON: " + err.message);
                 }
             };
-            reader.readAsText(file);
+            // Força a leitura do arquivo respeitando acentuação (UTF-8)
+            reader.readAsText(file, 'UTF-8');
         });
 
-        // 2. CARREGAMENTO DINÂMICO DO MOTOR 3D
         async function load3DEngine() {
             try {
                 const THREE = await import('three');
