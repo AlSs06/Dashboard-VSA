@@ -8,12 +8,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- Mudança para a rede jsDelivr com compilação +esm (Altamente fiável para o motor 3D) -->
+    <!-- Importação automática da última versão estável (sem bloquear o número da versão) -->
     <script type="importmap">
       {
         "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/+esm",
-          "openbim-components": "https://cdn.jsdelivr.net/npm/openbim-components@2.2.0/+esm"
+          "three": "https://esm.sh/three@0.160.0",
+          "openbim-components": "https://esm.sh/openbim-components"
         }
       }
     </script>
@@ -133,7 +133,6 @@
                         if (isNaN(areaValue)) areaValue = 0;
                         totalArea += areaValue;
 
-                        // Tratamento extra para prevenir dados vazios no gráfico
                         const tipo = (item.tipo_area_urbanizada && item.tipo_area_urbanizada !== "Não definido") ? item.tipo_area_urbanizada : 'Não Classificado';
                         tiposCount[tipo] = (tiposCount[tipo] || 0) + areaValue;
 
@@ -158,7 +157,6 @@
                     alert("Erro ao ler o ficheiro JSON: " + err.message);
                 }
             };
-            // Correção da codificação para o formato do Windows (resolve os  nos gráficos)
             reader.readAsText(file, 'windows-1252');
         });
 
@@ -233,7 +231,8 @@
             } catch (err) {
                 const errDiv = document.getElementById('erro-global');
                 errDiv.style.display = 'block';
-                errDiv.innerHTML = "<strong>AVISO:</strong> O motor 3D não pôde ser iniciado. Erro de ligação ao jsDelivr. Pode continuar a utilizar os gráficos JSON normalmente.";
+                // Imprime o erro real no ecrã para debug exato
+                errDiv.innerHTML = `<strong>AVISO:</strong> O motor 3D não pôde ser iniciado. Erro: ${err.message}. Pode continuar a utilizar os gráficos JSON.`;
                 console.error(err);
             }
         }
