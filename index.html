@@ -8,12 +8,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- Bloqueio rigoroso da versão do Three.js a 0.160.0 para evitar incompatibilidades -->
+    <!-- Import Map focado no web-ifc-viewer (motor super estável para carregamento via CDN) -->
     <script type="importmap">
       {
         "imports": {
-          "three": "https://esm.sh/three@0.160.0",
-          "openbim-components": "https://esm.sh/openbim-components@2.2.0?deps=three@0.160.0"
+          "three": "https://cdn.jsdelivr.net/npm/three@0.135.0/build/three.module.js",
+          "web-ifc-viewer": "https://cdn.jsdelivr.net/npm/web-ifc-viewer@1.0.218/dist/web-ifc-viewer.js"
         }
       }
     </script>
@@ -160,41 +160,23 @@
             reader.readAsText(file, 'windows-1252');
         });
 
+        // INICIALIZAÇÃO DO WEB-IFC-VIEWER
         async function load3DEngine() {
             try {
                 const THREE = await import('three');
-                const OBC = await import('openbim-components');
+                const { IfcViewerAPI } = await import('web-ifc-viewer');
                 
                 const container = document.getElementById("viewer-3d");
-                const components = new OBC.Components();
                 
-                components.scene = new OBC.SimpleScene(components);
-                components.scene.setup({backgroundColor: '#29254c'}); 
+                // Instancia o visualizador e aplica a cor de fundo escuro
+                const viewer = new IfcViewerAPI({ container, backgroundColor: new THREE.Color(0x29254c) });
                 
-                components.renderer = new OBC.SimpleRenderer(components, container);
-                components.camera = new OBC.SimpleCamera(components);
-                components.raycaster = new OBC.SimpleRaycaster(components);
+                // Aponta para os ficheiros auxiliares (WASM) necessários para ler a geometria
+                viewer.IFC.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/');
                 
-                components.init();
-
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-                directionalLight.position.set(20, 50, 20);
-                components.scene.get().add(directionalLight);
-                
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-                components.scene.get().add(ambientLight);
-
-                let fragments = new OBC.FragmentManager(components);
-                let ifcLoader = new OBC.FragmentIfcLoader(components);
-                
-                ifcLoader.settings.wasm = {
-                    path: "https://unpkg.com/web-ifc@0.0.44/",
-                    absolute: true
-                };
-                
-                await ifcLoader.setup();
-                
-                let ifcModel = null;
+                // Ativa grelha e eixos básicos para referência espacial
+                viewer.addGrid();
+                viewer.addAxes();
 
                 document.getElementById('upload-ifc').addEventListener('change', async (e) => {
                     const file = e.target.files[0];
@@ -204,35 +186,26 @@
                     overlay.style.display = 'flex';
                     
                     try {
-                        const data = await file.arrayBuffer();
-                        const buffer = new Uint8Array(data);
+                        // Cria um link local temporário ultra-rápido para o ficheiro de 58MB
+                        const url = URL.createObjectURL(file);
                         
-                        if(ifcModel) fragments.dispose();
-                        
-                        ifcModel = await ifcLoader.load(buffer, "galpao_model");
-                        components.scene.get().add(ifcModel);
-                        
-                        components.camera.controls.fitToSphere(ifcModel, true);
+                        // Carrega o IFC
+                        await viewer.IFC.loadIfcUrl(url);
                         
                         document.getElementById('lbl-ifc').style.backgroundColor = '#7b71d9';
                         document.getElementById('lbl-ifc').innerText = '✓ IFC Carregado';
                     } catch (error) {
-                        alert("Erro ao renderizar o IFC. A geometria pode ser demasiado complexa para a web.");
+                        alert("Erro crítico ao renderizar o IFC: " + error.message);
                         console.error(error);
                     } finally {
                         overlay.style.display = 'none';
                     }
                 });
-                
-                window.addEventListener('resize', () => {
-                    components.renderer.resize();
-                    components.camera.updateAspect();
-                });
+
             } catch (err) {
                 const errDiv = document.getElementById('erro-global');
                 errDiv.style.display = 'block';
-                // Imprime o erro real no ecrã para debug exato
-                errDiv.innerHTML = `<strong>AVISO:</strong> O motor 3D não pôde ser iniciado. Erro: ${err.message}. Pode continuar a utilizar os gráficos JSON.`;
+                errDiv.innerHTML = `<strong>AVISO:</strong> O motor 3D falhou ao iniciar. Erro: ${err.message}`;
                 console.error(err);
             }
         }
