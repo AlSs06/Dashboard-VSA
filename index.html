@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-PT">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,7 +8,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- Map de importação das bibliotecas 3D -->
     <script type="importmap">
       {
         "imports": {
@@ -18,33 +17,11 @@
       }
     </script>
 
-    <!-- SCRIPT DE TRATAMENTO DE ERROS (Executa antes de tudo) -->
     <script>
-        window.addEventListener('error', function(event) {
-            const errorDiv = document.getElementById('erro-global');
-            if(errorDiv) {
-                errorDiv.style.display = 'block';
-                errorDiv.innerHTML = "<strong>ERRO CRÍTICO DETETADO:</strong> " + event.message + 
-                "<br><br>Se a mensagem for 'CORS policy' ou 'module script failed', significa que abriu o arquivo via duplo clique (file:///). É necessário iniciar um servidor local.";
-            } else {
-                alert("Erro: " + event.message);
-            }
-        });
-        
-        window.addEventListener('unhandledrejection', function(event) {
-            const errorDiv = document.getElementById('erro-global');
-            if(errorDiv) {
-                errorDiv.style.display = 'block';
-                errorDiv.innerHTML = "<strong>ERRO DE CARREGAMENTO:</strong> " + event.reason;
-            }
-        });
-
         tailwind.config = {
             theme: {
                 extend: {
-                    colors: {
-                        dark: '#1e1b36', card: '#29254c', accent: '#7b71d9', text: '#e2e8f0'
-                    }
+                    colors: { dark: '#1e1b36', card: '#29254c', accent: '#7b71d9', text: '#e2e8f0' }
                 }
             }
         }
@@ -69,12 +46,10 @@
 </head>
 <body>
     
-    <!-- BANNER DE ERRO -->
     <div id="erro-global" style="display: none; position: absolute; top: 0; left: 0; width: 100%; background-color: #ff4444; color: white; padding: 15px; z-index: 9999; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
     </div>
 
     <div class="dashboard-container">
-        <!-- CABEÇALHO -->
         <header class="header">
             <div class="flex items-center gap-4">
                 <h1 class="text-3xl font-light">dashboard | <span class="font-bold">análise de galpão</span></h1>
@@ -89,7 +64,6 @@
             </div>
         </header>
 
-        <!-- BARRA LATERAL (Gráficos) -->
         <aside class="sidebar scrollbar-thin">
             <div class="card">
                 <h3>Área Total Mapeada</h3>
@@ -105,10 +79,8 @@
             </div>
         </aside>
 
-        <!-- VISUALIZADOR 3D -->
         <main class="viewer-container">
             <div id="viewer-3d"></div>
-            <!-- Tela de Carregamento -->
             <div id="loading-overlay" style="display: none; position: absolute; inset: 0; background: rgba(30, 27, 54, 0.85); z-index: 10; justify-content: center; align-items: center; flex-direction: column;">
                 <div style="width: 50px; height: 50px; border: 4px solid #7b71d9; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
                 <p style="margin-top: 15px; color: white; font-weight: bold;" id="loading-text">Processando Modelo 3D...</p>
@@ -116,13 +88,8 @@
         </main>
     </div>
 
-    <!-- Script Principal (Módulo) -->
     <script type="module">
-        import * as THREE from 'three';
-        import * as OBC from 'openbim-components';
-
-        let bimData = [];
-        let ifcModel = null;
+        // 1. CONFIGURAÇÃO INDEPENDENTE DO JSON E GRÁFICOS
         let chartTiposInstance = null;
         let chartOcupantesInstance = null;
         const colorPalette = ['#7b71d9', '#5a51a8', '#9d94ed', '#423b82', '#b8b2f2', '#342f5c'];
@@ -144,46 +111,62 @@
             });
         }
 
-        function processJSONData(data) {
-            bimData = data;
-            let totalArea = 0;
-            const tiposCount = {};
-            const ocupantesArea = {};
+        initCharts();
 
-            data.forEach(item => {
-                let areaValue = 0;
-                if (typeof item.area === 'string') {
-                    areaValue = parseFloat(item.area.replace(',', '.').replace(/[^0-9.-]+/g,""));
-                } else {
-                    areaValue = parseFloat(item.area);
+        document.getElementById('upload-json').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    let totalArea = 0;
+                    const tiposCount = {};
+                    const ocupantesArea = {};
+
+                    data.forEach(item => {
+                        let areaValue = 0;
+                        if (typeof item.area === 'string') {
+                            areaValue = parseFloat(item.area.replace(',', '.').replace(/[^0-9.-]+/g,""));
+                        } else {
+                            areaValue = parseFloat(item.area);
+                        }
+                        if (isNaN(areaValue)) areaValue = 0;
+                        totalArea += areaValue;
+
+                        const tipo = item.tipo_area_urbanizada || 'Indefinido';
+                        tiposCount[tipo] = (tiposCount[tipo] || 0) + areaValue;
+
+                        const ocupante = item.ocupante || 'Indefinido';
+                        ocupantesArea[ocupante] = (ocupantesArea[ocupante] || 0) + areaValue;
+                    });
+
+                    document.getElementById('kpi-area').innerText = new Intl.NumberFormat('pt-BR').format(totalArea.toFixed(2)) + ' m²';
+
+                    chartTiposInstance.data.labels = Object.keys(tiposCount);
+                    chartTiposInstance.data.datasets[0].data = Object.values(tiposCount);
+                    chartTiposInstance.update();
+
+                    const sortedOcupantes = Object.entries(ocupantesArea).sort((a, b) => b[1] - a[1]);
+                    chartOcupantesInstance.data.labels = sortedOcupantes.map(x => x[0]);
+                    chartOcupantesInstance.data.datasets[0].data = sortedOcupantes.map(x => x[1]);
+                    chartOcupantesInstance.update();
+                    
+                    document.getElementById('lbl-json').style.backgroundColor = '#7b71d9';
+                    document.getElementById('lbl-json').innerText = '✓ JSON Carregado';
+                } catch (err) {
+                    alert("Erro ao ler o ficheiro JSON: " + err.message);
                 }
-                if (isNaN(areaValue)) areaValue = 0;
-                totalArea += areaValue;
+            };
+            reader.readAsText(file);
+        });
 
-                const tipo = item.tipo_area_urbanizada || 'Indefinido';
-                tiposCount[tipo] = (tiposCount[tipo] || 0) + areaValue;
-
-                const ocupante = item.ocupante || 'Indefinido';
-                ocupantesArea[ocupante] = (ocupantesArea[ocupante] || 0) + areaValue;
-            });
-
-            document.getElementById('kpi-area').innerText = new Intl.NumberFormat('pt-BR').format(totalArea.toFixed(2)) + ' m²';
-
-            chartTiposInstance.data.labels = Object.keys(tiposCount);
-            chartTiposInstance.data.datasets[0].data = Object.values(tiposCount);
-            chartTiposInstance.update();
-
-            const sortedOcupantes = Object.entries(ocupantesArea).sort((a, b) => b[1] - a[1]);
-            chartOcupantesInstance.data.labels = sortedOcupantes.map(x => x[0]);
-            chartOcupantesInstance.data.datasets[0].data = sortedOcupantes.map(x => x[1]);
-            chartOcupantesInstance.update();
-            
-            document.getElementById('lbl-json').style.backgroundColor = '#7b71d9';
-            document.getElementById('lbl-json').innerText = '✓ JSON Carregado';
-        }
-
-        async function initViewer() {
+        // 2. CARREGAMENTO DINÂMICO DO MOTOR 3D
+        async function load3DEngine() {
             try {
+                const THREE = await import('three');
+                const OBC = await import('openbim-components');
+                
                 const container = document.getElementById("viewer-3d");
                 const components = new OBC.Components();
                 
@@ -212,20 +195,8 @@
                 };
                 
                 await ifcLoader.setup();
-
-                document.getElementById('upload-json').addEventListener('change', (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        try {
-                            processJSONData(JSON.parse(event.target.result));
-                        } catch (err) {
-                            alert("Erro ao ler o ficheiro JSON: " + err.message);
-                        }
-                    };
-                    reader.readAsText(file);
-                });
+                
+                let ifcModel = null;
 
                 document.getElementById('upload-ifc').addEventListener('change', async (e) => {
                     const file = e.target.files[0];
@@ -260,25 +231,13 @@
                     components.camera.updateAspect();
                 });
             } catch (err) {
-                document.getElementById('erro-global').style.display = 'block';
-                document.getElementById('erro-global').innerHTML = "<strong>ERRO NO MOTOR 3D:</strong> " + err.message + "<br>Certifique-se de estar rodando em um servidor local.";
+                const errDiv = document.getElementById('erro-global');
+                errDiv.style.display = 'block';
+                errDiv.innerHTML = "<strong>AVISO:</strong> O motor 3D não pôde ser iniciado (" + err.message + "). Pode continuar a utilizar os gráficos JSON normalmente.";
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            try {
-                initCharts();
-                initViewer();
-            } catch(e) {
-                console.error(e);
-            }
-        });
+        load3DEngine();
     </script>
 </body>
 </html>
-"""
-
-with open("Dashboard_G1_Fixed.html", "w", encoding="utf-8") as f:
-    f.write(html_code)
-
-print("HTML com erros gerado")
