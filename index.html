@@ -1,216 +1,1086 @@
 <!DOCTYPE html>
-<html lang="pt-PT">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard BIM | Análise de Áreas</title>
-    
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- Import Map focado no web-ifc-viewer (motor super estável para carregamento via CDN) -->
+    <!--
+      IMPORTANTE:
+      As versões do Three.js e do That Open Components ficam fixadas.
+      Isso evita que o CDN resolva versões incompatíveis entre si.
+    -->
     <script type="importmap">
-      {
+    {
         "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.135.0/build/three.module.js",
-          "web-ifc-viewer": "https://cdn.jsdelivr.net/npm/web-ifc-viewer@1.0.218/dist/web-ifc-viewer.js"
+            "three": "https://esm.sh/three@0.175.0",
+            "@thatopen/components": "https://esm.sh/@thatopen/components@3.4.8?external=three",
+            "@thatopen/fragments": "https://esm.sh/@thatopen/fragments@3.4.8?external=three"
         }
-      }
+    }
     </script>
 
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    colors: { dark: '#1e1b36', card: '#29254c', accent: '#7b71d9', text: '#e2e8f0' }
+                    colors: {
+                        dark: '#1e1b36',
+                        card: '#29254c',
+                        accent: '#7b71d9',
+                        text: '#e2e8f0'
+                    }
                 }
             }
-        }
+        };
     </script>
-    
+
     <style>
-        body { background-color: #1e1b36; color: #e2e8f0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; margin: 0; padding: 0; }
-        .dashboard-container { display: grid; grid-template-columns: 350px 1fr; grid-template-rows: 70px 1fr; height: 100vh; padding: 15px; gap: 15px; }
-        .header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #29254c; padding-bottom: 10px; }
-        .sidebar { background-color: #1e1b36; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; padding-right: 5px; }
-        .card { background-color: #29254c; border-radius: 8px; padding: 15px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; }
-        .card h3 { font-size: 0.95rem; color: #ffffff; margin-bottom: 15px; border-bottom: 1px solid #7b71d9; padding-bottom: 5px; }
-        .viewer-container { background-color: #29254c; border-radius: 8px; position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
-        #viewer-3d { width: 100%; height: 100%; position: absolute; top: 0; left: 0; outline: none; }
-        .file-upload { display: flex; gap: 10px; }
-        .file-upload label { background-color: #29254c; color: white; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; border: 1px solid #7b71d9; transition: background 0.3s; }
-        .file-upload label:hover { background-color: #7b71d9; }
-        input[type="file"] { display: none; }
-        .kpi-value { font-size: 2.2rem; font-weight: bold; color: #ffffff; text-align: center; padding: 10px 0; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+        body {
+            background-color: #1e1b36;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
+        .dashboard-container {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            grid-template-rows: 70px 1fr;
+            height: 100vh;
+            padding: 15px;
+            gap: 15px;
+            box-sizing: border-box;
+        }
+
+        .header {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #29254c;
+            padding-bottom: 10px;
+        }
+
+        .sidebar {
+            background-color: #1e1b36;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .card {
+            background-color: #29254c;
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+        }
+
+        .card h3 {
+            font-size: 0.95rem;
+            color: #ffffff;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #7b71d9;
+            padding-bottom: 5px;
+        }
+
+        .viewer-container {
+            background-color: #29254c;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.05);
+            min-width: 0;
+            min-height: 0;
+        }
+
+        #viewer-3d {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            inset: 0;
+            outline: none;
+        }
+
+        #viewer-3d canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .file-upload {
+            display: flex;
+            gap: 10px;
+        }
+
+        .file-upload label {
+            background-color: #29254c;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            border: 1px solid #7b71d9;
+            transition: background 0.3s;
+        }
+
+        .file-upload label:hover {
+            background-color: #7b71d9;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .kpi-value {
+            font-size: 2.2rem;
+            font-weight: bold;
+            color: #ffffff;
+            text-align: center;
+            padding: 10px 0;
+        }
+
+        #erro-global {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: #ff4444;
+            color: white;
+            padding: 15px;
+            z-index: 9999;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            box-sizing: border-box;
+        }
+
+        #status-3d {
+            position: absolute;
+            left: 12px;
+            bottom: 12px;
+            z-index: 20;
+            background: rgba(30,27,54,0.88);
+            color: #e2e8f0;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            padding: 7px 10px;
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 900px) {
+            .dashboard-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr;
+            }
+
+            .sidebar {
+                display: none;
+            }
+        }
     </style>
 </head>
+
 <body>
-    
-    <div id="erro-global" style="display: none; position: absolute; top: 0; left: 0; width: 100%; background-color: #ff4444; color: white; padding: 15px; z-index: 9999; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
+
+    <div id="erro-global"></div>
 
     <div class="dashboard-container">
+
         <header class="header">
             <div class="flex items-center gap-4">
-                <h1 class="text-3xl font-light">dashboard | <span class="font-bold">análise de galpão</span></h1>
+                <h1 class="text-3xl font-light">
+                    dashboard |
+                    <span class="font-bold">análise de galpão</span>
+                </h1>
             </div>
-            
+
             <div class="file-upload">
-                <label for="upload-ifc" id="lbl-ifc">1. Carregar Modelo 3D (IFC)</label>
+                <label for="upload-ifc" id="lbl-ifc">
+                    1. Carregar Modelo 3D (IFC)
+                </label>
                 <input type="file" id="upload-ifc" accept=".ifc">
-                
-                <label for="upload-json" id="lbl-json">2. Carregar Dados JSON</label>
+
+                <label for="upload-json" id="lbl-json">
+                    2. Carregar Dados JSON
+                </label>
                 <input type="file" id="upload-json" accept=".json">
             </div>
         </header>
 
         <aside class="sidebar scrollbar-thin">
+
             <div class="card">
                 <h3>Área Total Mapeada</h3>
-                <div class="kpi-value" id="kpi-area">0.00 m²</div>
+                <div class="kpi-value" id="kpi-area">0,00 m²</div>
             </div>
+
             <div class="card" style="height: 280px;">
                 <h3>Tipos de Área (m²)</h3>
-                <div style="position: relative; height: 100%; width: 100%;"><canvas id="chartTipos"></canvas></div>
+                <div style="position: relative; height: 100%; width: 100%;">
+                    <canvas id="chartTipos"></canvas>
+                </div>
             </div>
+
             <div class="card" style="flex-grow: 1; min-height: 320px;">
                 <h3>Área por Ocupante (m²)</h3>
-                <div style="position: relative; height: 100%; width: 100%;"><canvas id="chartOcupantes"></canvas></div>
+                <div style="position: relative; height: 100%; width: 100%;">
+                    <canvas id="chartOcupantes"></canvas>
+                </div>
             </div>
+
         </aside>
 
         <main class="viewer-container">
+
             <div id="viewer-3d"></div>
-            <div id="loading-overlay" style="display: none; position: absolute; inset: 0; background: rgba(30, 27, 54, 0.85); z-index: 10; justify-content: center; align-items: center; flex-direction: column;">
-                <div style="width: 50px; height: 50px; border: 4px solid #7b71d9; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-                <p style="margin-top: 15px; color: white; font-weight: bold;" id="loading-text">Processando Modelo 3D...</p>
+
+            <div id="loading-overlay"
+                 style="display:none; position:absolute; inset:0;
+                        background:rgba(30,27,54,0.85); z-index:10;
+                        justify-content:center; align-items:center;
+                        flex-direction:column;">
+
+                <div style="width:50px; height:50px;
+                            border:4px solid #7b71d9;
+                            border-top-color:transparent;
+                            border-radius:50%;
+                            animation:spin 1s linear infinite;">
+                </div>
+
+                <p style="margin-top:15px; color:white; font-weight:bold;"
+                   id="loading-text">
+                    Inicializando motor 3D...
+                </p>
             </div>
+
+            <div id="status-3d">Motor 3D: inicializando...</div>
+
         </main>
     </div>
 
+
     <script type="module">
+
         let chartTiposInstance = null;
         let chartOcupantesInstance = null;
-        const colorPalette = ['#7b71d9', '#5a51a8', '#9d94ed', '#423b82', '#b8b2f2', '#342f5c'];
 
-        function initCharts() {
-            Chart.defaults.color = '#e2e8f0';
-            const ctxTipos = document.getElementById('chartTipos').getContext('2d');
-            chartTiposInstance = new Chart(ctxTipos, {
-                type: 'doughnut',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: colorPalette, borderWidth: 0 }] },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#e2e8f0', boxWidth: 12 } } }, cutout: '65%' }
-            });
+        const colorPalette = [
+            '#7b71d9',
+            '#5a51a8',
+            '#9d94ed',
+            '#423b82',
+            '#b8b2f2',
+            '#342f5c'
+        ];
 
-            const ctxOcupantes = document.getElementById('chartOcupantes').getContext('2d');
-            chartOcupantesInstance = new Chart(ctxOcupantes, {
-                type: 'bar',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: '#7b71d9', borderRadius: 2 }] },
-                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' } }, y: { grid: { display: false } } } }
-            });
-        }
 
-        initCharts();
+        /* ============================================================
+           UTILITÁRIOS
+        ============================================================ */
 
-        document.getElementById('upload-json').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                try {
-                    const data = JSON.parse(event.target.result);
-                    let totalArea = 0;
-                    const tiposCount = {};
-                    const ocupantesArea = {};
+        function mostrarErroGlobal(mensagem, erro = null) {
+            const errDiv = document.getElementById('erro-global');
 
-                    data.forEach(item => {
-                        let areaValue = 0;
-                        if (typeof item.area === 'string') {
-                            areaValue = parseFloat(item.area.replace(',', '.').replace(/[^0-9.-]+/g,""));
-                        } else {
-                            areaValue = parseFloat(item.area);
-                        }
-                        if (isNaN(areaValue)) areaValue = 0;
-                        totalArea += areaValue;
+            errDiv.style.display = 'block';
 
-                        const tipo = (item.tipo_area_urbanizada && item.tipo_area_urbanizada !== "Não definido") ? item.tipo_area_urbanizada : 'Não Classificado';
-                        tiposCount[tipo] = (tiposCount[tipo] || 0) + areaValue;
+            errDiv.innerHTML = `
+                <strong>AVISO:</strong>
+                ${mensagem}
+            `;
 
-                        const ocupante = (item.ocupante && item.ocupante !== "Não definido") ? item.ocupante : 'Sem Ocupante';
-                        ocupantesArea[ocupante] = (ocupantesArea[ocupante] || 0) + areaValue;
-                    });
-
-                    document.getElementById('kpi-area').innerText = new Intl.NumberFormat('pt-BR').format(totalArea.toFixed(2)) + ' m²';
-
-                    chartTiposInstance.data.labels = Object.keys(tiposCount);
-                    chartTiposInstance.data.datasets[0].data = Object.values(tiposCount);
-                    chartTiposInstance.update();
-
-                    const sortedOcupantes = Object.entries(ocupantesArea).sort((a, b) => b[1] - a[1]);
-                    chartOcupantesInstance.data.labels = sortedOcupantes.map(x => x[0]);
-                    chartOcupantesInstance.data.datasets[0].data = sortedOcupantes.map(x => x[1]);
-                    chartOcupantesInstance.update();
-                    
-                    document.getElementById('lbl-json').style.backgroundColor = '#7b71d9';
-                    document.getElementById('lbl-json').innerText = '✓ JSON Carregado';
-                } catch (err) {
-                    alert("Erro ao ler o ficheiro JSON: " + err.message);
-                }
-            };
-            reader.readAsText(file, 'windows-1252');
-        });
-
-        // INICIALIZAÇÃO DO WEB-IFC-VIEWER
-        async function load3DEngine() {
-            try {
-                const THREE = await import('three');
-                const { IfcViewerAPI } = await import('web-ifc-viewer');
-                
-                const container = document.getElementById("viewer-3d");
-                
-                // Instancia o visualizador e aplica a cor de fundo escuro
-                const viewer = new IfcViewerAPI({ container, backgroundColor: new THREE.Color(0x29254c) });
-                
-                // Aponta para os ficheiros auxiliares (WASM) necessários para ler a geometria
-                viewer.IFC.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/');
-                
-                // Ativa grelha e eixos básicos para referência espacial
-                viewer.addGrid();
-                viewer.addAxes();
-
-                document.getElementById('upload-ifc').addEventListener('change', async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    
-                    const overlay = document.getElementById('loading-overlay');
-                    overlay.style.display = 'flex';
-                    
-                    try {
-                        // Cria um link local temporário ultra-rápido para o ficheiro de 58MB
-                        const url = URL.createObjectURL(file);
-                        
-                        // Carrega o IFC
-                        await viewer.IFC.loadIfcUrl(url);
-                        
-                        document.getElementById('lbl-ifc').style.backgroundColor = '#7b71d9';
-                        document.getElementById('lbl-ifc').innerText = '✓ IFC Carregado';
-                    } catch (error) {
-                        alert("Erro crítico ao renderizar o IFC: " + error.message);
-                        console.error(error);
-                    } finally {
-                        overlay.style.display = 'none';
-                    }
-                });
-
-            } catch (err) {
-                const errDiv = document.getElementById('erro-global');
-                errDiv.style.display = 'block';
-                errDiv.innerHTML = `<strong>AVISO:</strong> O motor 3D falhou ao iniciar. Erro: ${err.message}`;
-                console.error(err);
+            if (erro) {
+                console.error(erro);
             }
         }
 
+
+        function setStatus3D(texto) {
+            const status = document.getElementById('status-3d');
+
+            if (status) {
+                status.innerText = texto;
+            }
+        }
+
+
+        function setLoading(show, texto = 'Processando Modelo 3D...') {
+            const overlay = document.getElementById('loading-overlay');
+
+            if (!overlay) return;
+
+            overlay.style.display = show ? 'flex' : 'none';
+
+            const loadingText = document.getElementById('loading-text');
+
+            if (loadingText) {
+                loadingText.innerText = texto;
+            }
+        }
+
+
+        /* ============================================================
+           GRÁFICOS
+        ============================================================ */
+
+        function initCharts() {
+
+            Chart.defaults.color = '#e2e8f0';
+
+            const ctxTipos =
+                document.getElementById('chartTipos').getContext('2d');
+
+            chartTiposInstance = new Chart(ctxTipos, {
+                type: 'doughnut',
+
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: colorPalette,
+                        borderWidth: 0
+                    }]
+                },
+
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#e2e8f0',
+                                boxWidth: 12
+                            }
+                        }
+                    },
+
+                    cutout: '65%'
+                }
+            });
+
+
+            const ctxOcupantes =
+                document.getElementById('chartOcupantes').getContext('2d');
+
+            chartOcupantesInstance = new Chart(ctxOcupantes, {
+                type: 'bar',
+
+                data: {
+                    labels: [],
+
+                    datasets: [{
+                        data: [],
+                        backgroundColor: '#7b71d9',
+                        borderRadius: 2
+                    }]
+                },
+
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(255,255,255,0.05)'
+                            }
+                        },
+
+                        y: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+
+        initCharts();
+
+
+        /* ============================================================
+           JSON
+        ============================================================ */
+
+        document
+            .getElementById('upload-json')
+            .addEventListener('change', (e) => {
+
+                const file = e.target.files[0];
+
+                if (!file) return;
+
+                const reader = new FileReader();
+
+                reader.onload = (event) => {
+
+                    try {
+
+                        const parsed = JSON.parse(event.target.result);
+
+                        /*
+                         * Aceita tanto:
+                         *   [ {...}, {...} ]
+                         *
+                         * quanto:
+                         *   { "dados": [ {...}, {...} ] }
+                         */
+                        const data = Array.isArray(parsed)
+                            ? parsed
+                            : (
+                                Array.isArray(parsed?.dados)
+                                    ? parsed.dados
+                                    : Array.isArray(parsed?.data)
+                                        ? parsed.data
+                                        : null
+                            );
+
+                        if (!data) {
+                            throw new Error(
+                                'O JSON precisa conter uma lista de registros.'
+                            );
+                        }
+
+
+                        let totalArea = 0;
+
+                        const tiposCount = {};
+                        const ocupantesArea = {};
+
+
+                        data.forEach(item => {
+
+                            let areaValue = 0;
+
+                            if (
+                                typeof item.area === 'string'
+                            ) {
+
+                                areaValue = parseFloat(
+                                    item.area
+                                        .replace(',', '.')
+                                        .replace(/[^0-9.-]+/g, '')
+                                );
+
+                            } else {
+
+                                areaValue = parseFloat(item.area);
+                            }
+
+
+                            if (isNaN(areaValue)) {
+                                areaValue = 0;
+                            }
+
+
+                            totalArea += areaValue;
+
+
+                            const tipo =
+                                (
+                                    item.tipo_area_urbanizada &&
+                                    item.tipo_area_urbanizada !== 'Não definido'
+                                )
+                                    ? item.tipo_area_urbanizada
+                                    : 'Não Classificado';
+
+
+                            tiposCount[tipo] =
+                                (tiposCount[tipo] || 0) + areaValue;
+
+
+                            const ocupante =
+                                (
+                                    item.ocupante &&
+                                    item.ocupante !== 'Não definido'
+                                )
+                                    ? item.ocupante
+                                    : 'Sem Ocupante';
+
+
+                            ocupantesArea[ocupante] =
+                                (ocupantesArea[ocupante] || 0) + areaValue;
+
+                        });
+
+
+                        document.getElementById('kpi-area').innerText =
+                            new Intl.NumberFormat('pt-BR', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            }).format(totalArea) + ' m²';
+
+
+                        chartTiposInstance.data.labels =
+                            Object.keys(tiposCount);
+
+                        chartTiposInstance.data.datasets[0].data =
+                            Object.values(tiposCount);
+
+                        chartTiposInstance.update();
+
+
+                        const sortedOcupantes =
+                            Object.entries(ocupantesArea)
+                                .sort((a, b) => b[1] - a[1]);
+
+
+                        chartOcupantesInstance.data.labels =
+                            sortedOcupantes.map(x => x[0]);
+
+                        chartOcupantesInstance.data.datasets[0].data =
+                            sortedOcupantes.map(x => x[1]);
+
+                        chartOcupantesInstance.update();
+
+
+                        document.getElementById('lbl-json')
+                            .style.backgroundColor = '#7b71d9';
+
+                        document.getElementById('lbl-json')
+                            .innerText = '✓ JSON Carregado';
+
+                    } catch (err) {
+
+                        alert(
+                            'Erro ao ler o ficheiro JSON: ' +
+                            err.message
+                        );
+
+                        console.error(err);
+                    }
+                };
+
+
+                /*
+                 * Mantido o encoding original do projeto.
+                 * Caso seus JSONs sejam UTF-8, o navegador também
+                 * costuma funcionar corretamente com readAsText(file).
+                 */
+                reader.readAsText(file, 'windows-1252');
+            });
+
+
+        /* ============================================================
+           MOTOR 3D — THAT OPEN COMPONENTS
+        ============================================================ */
+
+        async function load3DEngine() {
+
+            setLoading(true, 'Inicializando motor 3D...');
+            setStatus3D('Motor 3D: carregando bibliotecas...');
+
+            try {
+
+                /*
+                 * Agora utilizamos o pacote atual do That Open.
+                 *
+                 * A arquitetura atual usa:
+                 * Components
+                 *   -> Worlds
+                 *      -> Scene
+                 *      -> Camera
+                 *      -> Renderer
+                 *
+                 * O IFC é processado pelo IfcLoader e gerenciado
+                 * pelo FragmentsManager.
+                 */
+                const THREE =
+                    await import('three');
+
+                const OBC =
+                    await import('@thatopen/components');
+
+
+                const container =
+                    document.getElementById('viewer-3d');
+
+
+                /* ----------------------------------------------------
+                   COMPONENTS
+                ---------------------------------------------------- */
+
+                const components =
+                    new OBC.Components();
+
+
+                /* ----------------------------------------------------
+                   WORLD
+                ---------------------------------------------------- */
+
+                const worlds =
+                    components.get(OBC.Worlds);
+
+
+                const world =
+                    worlds.create();
+
+
+                world.name = 'galpao-world';
+
+
+                /* ----------------------------------------------------
+                   SCENE
+                ---------------------------------------------------- */
+
+                const scene =
+                    new OBC.SimpleScene(components);
+
+                scene.setup({
+                    backgroundColor: '#29254c'
+                });
+
+                world.scene = scene;
+
+
+                /* ----------------------------------------------------
+                   RENDERER
+                ---------------------------------------------------- */
+
+                const renderer =
+                    new OBC.SimpleRenderer(
+                        components,
+                        container
+                    );
+
+                world.renderer = renderer;
+
+
+                /* ----------------------------------------------------
+                   CAMERA
+                ---------------------------------------------------- */
+
+                const camera =
+                    new OBC.SimpleCamera(components);
+
+                world.camera = camera;
+
+
+                /* ----------------------------------------------------
+                   RESIZE
+                ---------------------------------------------------- */
+
+                const resizeViewer = () => {
+
+                    try {
+                        renderer.resize();
+                    } catch (_) {}
+
+                    try {
+                        camera.updateAspect();
+                    } catch (_) {}
+                };
+
+
+                window.addEventListener(
+                    'resize',
+                    resizeViewer
+                );
+
+
+                /* ----------------------------------------------------
+                   INICIALIZA COMPONENTS
+                ---------------------------------------------------- */
+
+                components.init();
+
+
+                /* ----------------------------------------------------
+                   LUZES
+                ---------------------------------------------------- */
+
+                const directionalLight =
+                    new THREE.DirectionalLight(
+                        0xffffff,
+                        1.5
+                    );
+
+                directionalLight.position.set(
+                    20,
+                    50,
+                    20
+                );
+
+                scene.three.add(
+                    directionalLight
+                );
+
+
+                const ambientLight =
+                    new THREE.AmbientLight(
+                        0xffffff,
+                        0.5
+                    );
+
+                scene.three.add(
+                    ambientLight
+                );
+
+
+                /* ----------------------------------------------------
+                   FRAGMENTS MANAGER
+                ---------------------------------------------------- */
+
+                const fragments =
+                    components.get(
+                        OBC.FragmentsManager
+                    );
+
+
+                /*
+                 * A versão atual do That Open disponibiliza o worker
+                 * compatível através do próprio FragmentsManager.
+                 */
+                const workerUrl =
+                    await OBC.FragmentsManager.getWorker();
+
+
+                fragments.init(workerUrl);
+
+
+                /*
+                 * Atualiza os fragments sempre que a câmera muda.
+                 */
+                camera.controls.addEventListener(
+                    'update',
+                    () => {
+                        fragments.core.update();
+                    }
+                );
+
+
+                /*
+                 * Quando um modelo entra no FragmentManager,
+                 * associamos a câmera e colocamos sua geometria
+                 * na cena.
+                 */
+                fragments.list.onItemSet.add(
+                    async ({ value: model }) => {
+
+                        try {
+
+                            model.useCamera(
+                                camera.three
+                            );
+
+                        } catch (err) {
+
+                            console.warn(
+                                'Não foi possível associar a câmera ao modelo:',
+                                err
+                            );
+                        }
+
+
+                        scene.three.add(
+                            model.object
+                        );
+
+
+                        await fragments.core.update(
+                            true
+                        );
+                    }
+                );
+
+
+                /* ----------------------------------------------------
+                   IFC LOADER
+                ---------------------------------------------------- */
+
+                const ifcLoader =
+                    components.get(
+                        OBC.IfcLoader
+                    );
+
+
+                /*
+                 * A configuração automática procura a versão de
+                 * web-ifc compatível com a versão do Components.
+                 */
+                await ifcLoader.setup({
+                    autoSetWasm: true
+                });
+
+
+                /* ----------------------------------------------------
+                   UPLOAD IFC
+                ---------------------------------------------------- */
+
+                let currentModel = null;
+
+
+                document
+                    .getElementById('upload-ifc')
+                    .addEventListener(
+                        'change',
+                        async (e) => {
+
+                            const file =
+                                e.target.files[0];
+
+                            if (!file) return;
+
+
+                            setLoading(
+                                true,
+                                'Processando Modelo IFC...'
+                            );
+
+
+                            setStatus3D(
+                                'Motor 3D: processando IFC...'
+                            );
+
+
+                            try {
+
+                                /*
+                                 * Remove modelo anterior da cena.
+                                 */
+                                if (currentModel) {
+
+                                    try {
+                                        scene.three.remove(
+                                            currentModel.object
+                                        );
+                                    } catch (_) {}
+
+                                    try {
+                                        currentModel.dispose();
+                                    } catch (_) {}
+
+                                    currentModel = null;
+                                }
+
+
+                                const data =
+                                    await file.arrayBuffer();
+
+
+                                const buffer =
+                                    new Uint8Array(data);
+
+
+                                /*
+                                 * A API atual do IfcLoader recebe:
+                                 *
+                                 *   Uint8Array
+                                 *   coordinate
+                                 *   nome do modelo
+                                 */
+                                const model =
+                                    await ifcLoader.load(
+                                        buffer,
+                                        true,
+                                        'galpao_model'
+                                    );
+
+
+                                currentModel = model;
+
+
+                                /*
+                                 * Em algumas versões o evento
+                                 * onItemSet já terá colocado o modelo
+                                 * na cena. O add abaixo é protegido
+                                 * para evitar duplicação.
+                                 */
+                                if (
+                                    model &&
+                                    model.object &&
+                                    !scene.three.children.includes(
+                                        model.object
+                                    )
+                                ) {
+                                    scene.three.add(
+                                        model.object
+                                    );
+                                }
+
+
+                                try {
+
+                                    model.useCamera(
+                                        camera.three
+                                    );
+
+                                } catch (_) {}
+
+
+                                await fragments.core.update(
+                                    true
+                                );
+
+
+                                /*
+                                 * Enquadra o modelo na câmera.
+                                 */
+                                try {
+
+                                    if (
+                                        model.object
+                                    ) {
+
+                                        const box =
+                                            new THREE.Box3()
+                                                .setFromObject(
+                                                    model.object
+                                                );
+
+                                        if (
+                                            !box.isEmpty()
+                                        ) {
+
+                                            const center =
+                                                new THREE.Vector3();
+
+                                            const sphere =
+                                                new THREE.Sphere();
+
+                                            box.getCenter(
+                                                center
+                                            );
+
+                                            box.getBoundingSphere(
+                                                sphere
+                                            );
+
+
+                                            await camera.controls
+                                                .fitToSphere(
+                                                    sphere,
+                                                    true
+                                                );
+                                        }
+                                    }
+
+                                } catch (fitError) {
+
+                                    console.warn(
+                                        'Não foi possível enquadrar automaticamente o IFC:',
+                                        fitError
+                                    );
+                                }
+
+
+                                document
+                                    .getElementById('lbl-ifc')
+                                    .style.backgroundColor =
+                                    '#7b71d9';
+
+
+                                document
+                                    .getElementById('lbl-ifc')
+                                    .innerText =
+                                    '✓ IFC Carregado';
+
+
+                                setStatus3D(
+                                    'Motor 3D: IFC carregado'
+                                );
+
+
+                            } catch (error) {
+
+                                console.error(
+                                    'Erro ao renderizar IFC:',
+                                    error
+                                );
+
+
+                                alert(
+                                    'Erro ao renderizar o IFC.\n\n' +
+                                    (
+                                        error?.message ||
+                                        'Erro desconhecido.'
+                                    )
+                                );
+
+
+                                setStatus3D(
+                                    'Motor 3D: erro ao carregar IFC'
+                                );
+
+                            } finally {
+
+                                setLoading(false);
+                            }
+                        }
+                    );
+
+
+                resizeViewer();
+
+
+                setStatus3D(
+                    'Motor 3D: pronto para carregar IFC'
+                );
+
+
+                setLoading(false);
+
+
+            } catch (err) {
+
+                console.error(
+                    'Erro ao iniciar motor 3D:',
+                    err
+                );
+
+
+                setLoading(false);
+
+
+                setStatus3D(
+                    'Motor 3D: indisponível'
+                );
+
+
+                mostrarErroGlobal(
+                    'O motor 3D não pôde ser iniciado. ' +
+                    'Os gráficos JSON continuam disponíveis. ' +
+                    'Detalhes: ' +
+                    (err?.message || 'erro desconhecido.'),
+                    err
+                );
+            }
+        }
+
+
+        /* ============================================================
+           START
+        ============================================================ */
+
         load3DEngine();
+
     </script>
+
 </body>
 </html>
