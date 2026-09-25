@@ -1,0 +1,284 @@
+html_code = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard BIM | Análise de Áreas</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Map de importação das bibliotecas 3D -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "openbim-components": "https://unpkg.com/openbim-components@2.2.0/openbim-components.js"
+        }
+      }
+    </script>
+
+    <!-- SCRIPT DE TRATAMENTO DE ERROS (Executa antes de tudo) -->
+    <script>
+        window.addEventListener('error', function(event) {
+            const errorDiv = document.getElementById('erro-global');
+            if(errorDiv) {
+                errorDiv.style.display = 'block';
+                errorDiv.innerHTML = "<strong>ERRO CRÍTICO DETETADO:</strong> " + event.message + 
+                "<br><br>Se a mensagem for 'CORS policy' ou 'module script failed', significa que abriu o arquivo via duplo clique (file:///). É necessário iniciar um servidor local.";
+            } else {
+                alert("Erro: " + event.message);
+            }
+        });
+        
+        window.addEventListener('unhandledrejection', function(event) {
+            const errorDiv = document.getElementById('erro-global');
+            if(errorDiv) {
+                errorDiv.style.display = 'block';
+                errorDiv.innerHTML = "<strong>ERRO DE CARREGAMENTO:</strong> " + event.reason;
+            }
+        });
+
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#1e1b36', card: '#29254c', accent: '#7b71d9', text: '#e2e8f0'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body { background-color: #1e1b36; color: #e2e8f0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; margin: 0; padding: 0; }
+        .dashboard-container { display: grid; grid-template-columns: 350px 1fr; grid-template-rows: 70px 1fr; height: 100vh; padding: 15px; gap: 15px; }
+        .header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #29254c; padding-bottom: 10px; }
+        .sidebar { background-color: #1e1b36; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; padding-right: 5px; }
+        .card { background-color: #29254c; border-radius: 8px; padding: 15px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; }
+        .card h3 { font-size: 0.95rem; color: #ffffff; margin-bottom: 15px; border-bottom: 1px solid #7b71d9; padding-bottom: 5px; }
+        .viewer-container { background-color: #29254c; border-radius: 8px; position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
+        #viewer-3d { width: 100%; height: 100%; position: absolute; top: 0; left: 0; outline: none; }
+        .file-upload { display: flex; gap: 10px; }
+        .file-upload label { background-color: #29254c; color: white; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; border: 1px solid #7b71d9; transition: background 0.3s; }
+        .file-upload label:hover { background-color: #7b71d9; }
+        input[type="file"] { display: none; }
+        .kpi-value { font-size: 2.2rem; font-weight: bold; color: #ffffff; text-align: center; padding: 10px 0; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    
+    <!-- BANNER DE ERRO -->
+    <div id="erro-global" style="display: none; position: absolute; top: 0; left: 0; width: 100%; background-color: #ff4444; color: white; padding: 15px; z-index: 9999; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+    </div>
+
+    <div class="dashboard-container">
+        <!-- CABEÇALHO -->
+        <header class="header">
+            <div class="flex items-center gap-4">
+                <h1 class="text-3xl font-light">dashboard | <span class="font-bold">análise de galpão</span></h1>
+            </div>
+            
+            <div class="file-upload">
+                <label for="upload-ifc" id="lbl-ifc">1. Carregar Modelo 3D (IFC)</label>
+                <input type="file" id="upload-ifc" accept=".ifc">
+                
+                <label for="upload-json" id="lbl-json">2. Carregar Dados JSON</label>
+                <input type="file" id="upload-json" accept=".json">
+            </div>
+        </header>
+
+        <!-- BARRA LATERAL (Gráficos) -->
+        <aside class="sidebar scrollbar-thin">
+            <div class="card">
+                <h3>Área Total Mapeada</h3>
+                <div class="kpi-value" id="kpi-area">0.00 m²</div>
+            </div>
+            <div class="card" style="height: 280px;">
+                <h3>Tipos de Área (m²)</h3>
+                <div style="position: relative; height: 100%; width: 100%;"><canvas id="chartTipos"></canvas></div>
+            </div>
+            <div class="card" style="flex-grow: 1; min-height: 320px;">
+                <h3>Área por Ocupante (m²)</h3>
+                <div style="position: relative; height: 100%; width: 100%;"><canvas id="chartOcupantes"></canvas></div>
+            </div>
+        </aside>
+
+        <!-- VISUALIZADOR 3D -->
+        <main class="viewer-container">
+            <div id="viewer-3d"></div>
+            <!-- Tela de Carregamento -->
+            <div id="loading-overlay" style="display: none; position: absolute; inset: 0; background: rgba(30, 27, 54, 0.85); z-index: 10; justify-content: center; align-items: center; flex-direction: column;">
+                <div style="width: 50px; height: 50px; border: 4px solid #7b71d9; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                <p style="margin-top: 15px; color: white; font-weight: bold;" id="loading-text">Processando Modelo 3D...</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Script Principal (Módulo) -->
+    <script type="module">
+        import * as THREE from 'three';
+        import * as OBC from 'openbim-components';
+
+        let bimData = [];
+        let ifcModel = null;
+        let chartTiposInstance = null;
+        let chartOcupantesInstance = null;
+        const colorPalette = ['#7b71d9', '#5a51a8', '#9d94ed', '#423b82', '#b8b2f2', '#342f5c'];
+
+        function initCharts() {
+            Chart.defaults.color = '#e2e8f0';
+            const ctxTipos = document.getElementById('chartTipos').getContext('2d');
+            chartTiposInstance = new Chart(ctxTipos, {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: colorPalette, borderWidth: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#e2e8f0', boxWidth: 12 } } }, cutout: '65%' }
+            });
+
+            const ctxOcupantes = document.getElementById('chartOcupantes').getContext('2d');
+            chartOcupantesInstance = new Chart(ctxOcupantes, {
+                type: 'bar',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: '#7b71d9', borderRadius: 2 }] },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' } }, y: { grid: { display: false } } } }
+            });
+        }
+
+        function processJSONData(data) {
+            bimData = data;
+            let totalArea = 0;
+            const tiposCount = {};
+            const ocupantesArea = {};
+
+            data.forEach(item => {
+                let areaValue = 0;
+                if (typeof item.area === 'string') {
+                    areaValue = parseFloat(item.area.replace(',', '.').replace(/[^0-9.-]+/g,""));
+                } else {
+                    areaValue = parseFloat(item.area);
+                }
+                if (isNaN(areaValue)) areaValue = 0;
+                totalArea += areaValue;
+
+                const tipo = item.tipo_area_urbanizada || 'Indefinido';
+                tiposCount[tipo] = (tiposCount[tipo] || 0) + areaValue;
+
+                const ocupante = item.ocupante || 'Indefinido';
+                ocupantesArea[ocupante] = (ocupantesArea[ocupante] || 0) + areaValue;
+            });
+
+            document.getElementById('kpi-area').innerText = new Intl.NumberFormat('pt-BR').format(totalArea.toFixed(2)) + ' m²';
+
+            chartTiposInstance.data.labels = Object.keys(tiposCount);
+            chartTiposInstance.data.datasets[0].data = Object.values(tiposCount);
+            chartTiposInstance.update();
+
+            const sortedOcupantes = Object.entries(ocupantesArea).sort((a, b) => b[1] - a[1]);
+            chartOcupantesInstance.data.labels = sortedOcupantes.map(x => x[0]);
+            chartOcupantesInstance.data.datasets[0].data = sortedOcupantes.map(x => x[1]);
+            chartOcupantesInstance.update();
+            
+            document.getElementById('lbl-json').style.backgroundColor = '#7b71d9';
+            document.getElementById('lbl-json').innerText = '✓ JSON Carregado';
+        }
+
+        async function initViewer() {
+            try {
+                const container = document.getElementById("viewer-3d");
+                const components = new OBC.Components();
+                
+                components.scene = new OBC.SimpleScene(components);
+                components.scene.setup({backgroundColor: '#29254c'}); 
+                
+                components.renderer = new OBC.SimpleRenderer(components, container);
+                components.camera = new OBC.SimpleCamera(components);
+                components.raycaster = new OBC.SimpleRaycaster(components);
+                
+                components.init();
+
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+                directionalLight.position.set(20, 50, 20);
+                components.scene.get().add(directionalLight);
+                
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                components.scene.get().add(ambientLight);
+
+                let fragments = new OBC.FragmentManager(components);
+                let ifcLoader = new OBC.FragmentIfcLoader(components);
+                
+                ifcLoader.settings.wasm = {
+                    path: "https://unpkg.com/web-ifc@0.0.44/",
+                    absolute: true
+                };
+                
+                await ifcLoader.setup();
+
+                document.getElementById('upload-json').addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        try {
+                            processJSONData(JSON.parse(event.target.result));
+                        } catch (err) {
+                            alert("Erro ao ler o ficheiro JSON: " + err.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                });
+
+                document.getElementById('upload-ifc').addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    const overlay = document.getElementById('loading-overlay');
+                    overlay.style.display = 'flex';
+                    
+                    try {
+                        const data = await file.arrayBuffer();
+                        const buffer = new Uint8Array(data);
+                        
+                        if(ifcModel) fragments.dispose();
+                        
+                        ifcModel = await ifcLoader.load(buffer, "galpao_model");
+                        components.scene.get().add(ifcModel);
+                        
+                        components.camera.controls.fitToSphere(ifcModel, true);
+                        
+                        document.getElementById('lbl-ifc').style.backgroundColor = '#7b71d9';
+                        document.getElementById('lbl-ifc').innerText = '✓ IFC Carregado';
+                    } catch (error) {
+                        alert("Erro crítico ao renderizar o IFC: " + error.message);
+                        console.error(error);
+                    } finally {
+                        overlay.style.display = 'none';
+                    }
+                });
+                
+                window.addEventListener('resize', () => {
+                    components.renderer.resize();
+                    components.camera.updateAspect();
+                });
+            } catch (err) {
+                document.getElementById('erro-global').style.display = 'block';
+                document.getElementById('erro-global').innerHTML = "<strong>ERRO NO MOTOR 3D:</strong> " + err.message + "<br>Certifique-se de estar rodando em um servidor local.";
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                initCharts();
+                initViewer();
+            } catch(e) {
+                console.error(e);
+            }
+        });
+    </script>
+</body>
+</html>
+"""
+
+with open("Dashboard_G1_Fixed.html", "w", encoding="utf-8") as f:
+    f.write(html_code)
+
+print("HTML com erros gerado")
