@@ -8,18 +8,18 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!--
+    <!-- 
       IMPORTANTE:
-      As versões do Three.js e do That Open Components ficam fixadas.
-      Isso evita que o CDN resolva versões incompatíveis entre si.
+      - O parâmetro ?bundle força o servidor a empacotar tudo num único ficheiro.
+      - A versão do Three.js é fixada na 0.160.0 para garantir compatibilidade com o motor.
     -->
     <script type="importmap">
     {
         "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/": "https://unpkg.com/three@0.160.0/",
-            "@thatopen/components": "https://unpkg.com/@thatopen/components@3.4.8/dist/index.js",
-            "@thatopen/fragments": "https://unpkg.com/@thatopen/fragments@3.4.8/dist/index.js"
+            "three": "https://esm.sh/three@0.160.0",
+            "three/": "https://esm.sh/three@0.160.0/",
+            "@thatopen/components": "https://esm.sh/@thatopen/components@3.4.8?bundle&external=three",
+            "@thatopen/fragments": "https://esm.sh/@thatopen/fragments@3.4.8?bundle&external=three"
         }
     }
     </script>
