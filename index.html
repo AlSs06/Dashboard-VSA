@@ -9,19 +9,12 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <!-- 
-      SOLUÇÃO DEFINITIVA: 
-      O mapeamento "three/" ensina o navegador a resolver as subpastas 
-      exigidas pelo web-ifc-viewer, eliminando o erro de BufferGeometryUtils.
+      SOLUÇÃO DEFINITIVA (À PROVA DE FALHAS):
+      Removemos os importmaps complexos e carregamos as versões pré-compiladas 
+      globais. Isto ignora por completo os conflitos de "fs", WebGPU ou módulos.
     -->
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://esm.sh/three@0.135.0",
-            "three/": "https://esm.sh/three@0.135.0/",
-            "web-ifc-viewer": "https://esm.sh/web-ifc-viewer@1.0.218?external=three"
-        }
-    }
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.135.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web-ifc-viewer@1.0.218/dist/web-ifc-viewer.js"></script>
 
     <script>
         tailwind.config = {
@@ -96,6 +89,7 @@
         </main>
     </div>
 
+    <!-- Mantemos o script como módulo apenas para organizar o seu código -->
     <script type="module">
         let chartTiposInstance = null;
         let chartOcupantesInstance = null;
@@ -197,12 +191,15 @@
             setStatus3D('Motor 3D: carregando bibliotecas...');
 
             try {
-                const THREE = await import('three');
-                const { IfcViewerAPI } = await import('web-ifc-viewer');
-
+                // A biblioteca foi carregada globalmente pelo <script> no topo.
+                // O objeto IfcViewerAPI já existe na janela (window).
                 const container = document.getElementById('viewer-3d');
                 const viewer = new IfcViewerAPI({ container, backgroundColor: new THREE.Color(0x29254c) });
                 
+                // Ativa uma grelha no chão para visualizar melhor o espaço vazio
+                viewer.addGrid();
+                
+                // O caminho para o conversor WASM (em C++) que lê a geometria
                 viewer.IFC.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/');
 
                 document.getElementById('upload-ifc').addEventListener('change', async (e) => {
