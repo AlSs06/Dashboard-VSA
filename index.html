@@ -8,13 +8,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- 
-      SOLUÇÃO DEFINITIVA (À PROVA DE FALHAS):
-      Removemos os importmaps complexos e carregamos as versões pré-compiladas 
-      globais. Isto ignora por completo os conflitos de "fs", WebGPU ou módulos.
-    -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.135.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/web-ifc-viewer@1.0.218/dist/web-ifc-viewer.js"></script>
+    <!-- O Mapeamento Perfeito: Motor Moderno + Three.js 0.172.0 -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://esm.sh/three@0.172.0",
+            "three/": "https://esm.sh/three@0.172.0/",
+            "@thatopen/components": "https://esm.sh/@thatopen/components@3.4.8?external=three",
+            "@thatopen/fragments": "https://esm.sh/@thatopen/fragments@3.4.8?external=three"
+        }
+    }
+    </script>
 
     <script>
         tailwind.config = {
@@ -89,8 +93,8 @@
         </main>
     </div>
 
-    <!-- Mantemos o script como módulo apenas para organizar o seu código -->
     <script type="module">
+        // Lógica de UI e Gráficos JSON
         let chartTiposInstance = null;
         let chartOcupantesInstance = null;
         const colorPalette = ['#7b71d9', '#5a51a8', '#9d94ed', '#423b82', '#b8b2f2', '#342f5c'];
@@ -107,7 +111,7 @@
             if (status) status.innerText = texto;
         }
 
-        function setLoading(show, texto = 'Processando Modelo 3D...') {
+        function setLoading(show, texto = 'Processando...') {
             const overlay = document.getElementById('loading-overlay');
             if (!overlay) return;
             overlay.style.display = show ? 'flex' : 'none';
@@ -150,11 +154,9 @@
 
                     data.forEach(item => {
                         let areaValue = 0;
-                        if (typeof item.area === 'string') {
-                            areaValue = parseFloat(item.area.replace(',', '.').replace(/[^0-9.-]+/g, ''));
-                        } else {
-                            areaValue = parseFloat(item.area);
-                        }
+                        if (typeof item.area === 'string') areaValue = parseFloat(item.area.replace(',', '.').replace(/[^0-9.-]+/g, ''));
+                        else areaValue = parseFloat(item.area);
+                        
                         if (isNaN(areaValue)) areaValue = 0;
                         totalArea += areaValue;
 
@@ -179,60 +181,96 @@
                     document.getElementById('lbl-json').style.backgroundColor = '#7b71d9';
                     document.getElementById('lbl-json').innerText = '✓ JSON Carregado';
                 } catch (err) {
-                    alert('Erro ao ler o ficheiro JSON: ' + err.message);
-                    console.error(err);
+                    alert('Erro JSON: ' + err.message);
                 }
             };
             reader.readAsText(file, 'windows-1252');
         });
 
+        // Motor 3D Limpo
         async function load3DEngine() {
-            setLoading(true, 'Inicializando motor 3D...');
-            setStatus3D('Motor 3D: carregando bibliotecas...');
+            setLoading(true, 'Iniciando arquitetura 3D...');
+            setStatus3D('Motor 3D: conectando bibliotecas...');
 
             try {
-                // A biblioteca foi carregada globalmente pelo <script> no topo.
-                // O objeto IfcViewerAPI já existe na janela (window).
+                const THREE = await import('three');
+                const OBC = await import('@thatopen/components');
+
                 const container = document.getElementById('viewer-3d');
-                const viewer = new IfcViewerAPI({ container, backgroundColor: new THREE.Color(0x29254c) });
-                
-                // Ativa uma grelha no chão para visualizar melhor o espaço vazio
-                viewer.addGrid();
-                
-                // O caminho para o conversor WASM (em C++) que lê a geometria
-                viewer.IFC.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/');
+                const components = new OBC.Components();
+                const worlds = components.get(OBC.Worlds);
+                const world = worlds.create();
+
+                world.scene = new OBC.SimpleScene(components);
+                world.scene.setup({ backgroundColor: '#29254c' });
+
+                world.renderer = new OBC.SimpleRenderer(components, container);
+                world.camera = new OBC.SimpleCamera(components);
+
+                components.init();
+
+                window.addEventListener('resize', () => {
+                    world.renderer.resize();
+                    world.camera.updateAspect();
+                });
+
+                // Luzes do ambiente
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+                directionalLight.position.set(20, 50, 20);
+                world.scene.three.add(directionalLight);
+                world.scene.three.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+                const fragments = components.get(OBC.FragmentsManager);
+                const ifcLoader = components.get(OBC.IfcLoader);
+                await ifcLoader.setup(); // Trata do WASM automaticamente sem erros fs
+
+                let currentModel = null;
 
                 document.getElementById('upload-ifc').addEventListener('change', async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
 
-                    setLoading(true, 'Processando Modelo IFC...');
-                    setStatus3D('Motor 3D: processando IFC...');
+                    setLoading(true, 'Lendo Geometria do Galpão...');
+                    setStatus3D('Motor 3D: extraindo IFC...');
 
                     try {
-                        const url = URL.createObjectURL(file);
-                        await viewer.IFC.loadIfcUrl(url);
-                        
+                        if (currentModel) {
+                            world.scene.three.remove(currentModel);
+                            fragments.dispose();
+                        }
+
+                        const data = await file.arrayBuffer();
+                        const buffer = new Uint8Array(data);
+
+                        currentModel = await ifcLoader.load(buffer);
+                        world.scene.three.add(currentModel);
+
+                        // Enquadra o modelo na câmara
+                        const box = new THREE.Box3().setFromObject(currentModel);
+                        const sphere = new THREE.Sphere();
+                        box.getBoundingSphere(sphere);
+                        world.camera.controls.fitToSphere(sphere, true);
+
                         document.getElementById('lbl-ifc').style.backgroundColor = '#7b71d9';
                         document.getElementById('lbl-ifc').innerText = '✓ IFC Carregado';
-                        setStatus3D('Motor 3D: IFC carregado');
+                        setStatus3D('Motor 3D: pronto');
                     } catch (error) {
-                        console.error('Erro ao renderizar IFC:', error);
-                        alert('Erro ao renderizar o IFC.\n\n' + (error?.message || 'Erro desconhecido.'));
-                        setStatus3D('Motor 3D: erro ao carregar IFC');
+                        console.error(error);
+                        alert('Falha ao renderizar geometria IFC.');
+                        setStatus3D('Erro de renderização');
                     } finally {
                         setLoading(false);
                     }
                 });
 
-                setStatus3D('Motor 3D: pronto para carregar IFC');
+                setStatus3D('Motor 3D: aguardando modelo');
                 setLoading(false);
 
             } catch (err) {
-                console.error('Erro ao iniciar motor 3D:', err);
+                console.error(err);
                 setLoading(false);
                 setStatus3D('Motor 3D: indisponível');
-                mostrarErroGlobal('O motor 3D não pôde ser iniciado. Os gráficos JSON continuam disponíveis. Detalhes: ' + (err?.message || 'erro desconhecido.'), err);
+                mostrarErroGlobal('Falha ao iniciar. Os gráficos JSON continuam ativos. Erro: ' + err.message);
             }
         }
 
