@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-PT">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,14 +8,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- O Mapeamento Perfeito: Motor Moderno + Three.js 0.172.0 -->
     <script type="importmap">
     {
         "imports": {
-            "three": "https://esm.sh/three@0.172.0",
-            "three/": "https://esm.sh/three@0.172.0/",
-            "@thatopen/components": "https://esm.sh/@thatopen/components@3.4.8?external=three",
-            "@thatopen/fragments": "https://esm.sh/@thatopen/fragments@3.4.8?external=three"
+            "three": "https://esm.sh/three@0.160.0",
+            "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/",
+            "web-ifc": "https://esm.sh/web-ifc@0.0.57"
         }
     }
     </script>
@@ -37,7 +35,7 @@
         .sidebar { background-color: #1e1b36; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; padding-right: 5px; }
         .card { background-color: #29254c; border-radius: 8px; padding: 15px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; box-sizing: border-box; }
         .card h3 { font-size: 0.95rem; color: #ffffff; margin-bottom: 15px; border-bottom: 1px solid #7b71d9; padding-bottom: 5px; }
-        .viewer-container { background-color: #29254c; border-radius: 8px; position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); min-width: 0; min-height: 0; }
+        .viewer-container { background-color: #29254c; border-radius: 8px; position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
         #viewer-3d { width: 100%; height: 100%; position: absolute; inset: 0; outline: none; }
         #viewer-3d canvas { display: block; width: 100% !important; height: 100% !important; }
         .file-upload { display: flex; gap: 10px; }
@@ -45,10 +43,9 @@
         .file-upload label:hover { background-color: #7b71d9; }
         input[type="file"] { display: none; }
         .kpi-value { font-size: 2.2rem; font-weight: bold; color: #ffffff; text-align: center; padding: 10px 0; }
-        #erro-global { display: none; position: fixed; top: 0; left: 0; width: 100%; background-color: #ff4444; color: white; padding: 15px; z-index: 9999; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); box-sizing: border-box; }
-        #status-3d { position: absolute; left: 12px; bottom: 12px; z-index: 20; background: rgba(30,27,54,0.88); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 7px 10px; font-size: 12px; pointer-events: none; }
+        #erro-global { display: none; position: fixed; top: 0; left: 0; width: 100%; background-color: #ff4444; color: white; padding: 15px; z-index: 9999; text-align: center; }
+        #status-3d { position: absolute; left: 12px; bottom: 12px; z-index: 20; background: rgba(30,27,54,0.88); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 7px 10px; font-size: 12px; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
-        @media (max-width: 900px) { .dashboard-container { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } .sidebar { display: none; } }
     </style>
 </head>
 <body>
@@ -57,9 +54,7 @@
 
     <div class="dashboard-container">
         <header class="header">
-            <div class="flex items-center gap-4">
-                <h1 class="text-3xl font-light">dashboard | <span class="font-bold">análise de galpão</span></h1>
-            </div>
+            <h1 class="text-3xl font-light">dashboard | <span class="font-bold">análise de galpão</span></h1>
             <div class="file-upload">
                 <label for="upload-ifc" id="lbl-ifc">1. Carregar Modelo 3D (IFC)</label>
                 <input type="file" id="upload-ifc" accept=".ifc">
@@ -68,7 +63,7 @@
             </div>
         </header>
 
-        <aside class="sidebar scrollbar-thin">
+        <aside class="sidebar">
             <div class="card">
                 <h3>Área Total Mapeada</h3>
                 <div class="kpi-value" id="kpi-area">0,00 m²</div>
@@ -87,36 +82,29 @@
             <div id="viewer-3d"></div>
             <div id="loading-overlay" style="display:none; position:absolute; inset:0; background:rgba(30,27,54,0.85); z-index:10; justify-content:center; align-items:center; flex-direction:column;">
                 <div style="width:50px; height:50px; border:4px solid #7b71d9; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></div>
-                <p style="margin-top:15px; color:white; font-weight:bold;" id="loading-text">Inicializando motor 3D...</p>
+                <p style="margin-top:15px; color:white; font-weight:bold;" id="loading-text">Processando...</p>
             </div>
-            <div id="status-3d">Motor 3D: inicializando...</div>
+            <div id="status-3d">Motor 3D: aguardando inicialização...</div>
         </main>
     </div>
 
     <script type="module">
-        // Lógica de UI e Gráficos JSON
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import * as WebIFC from 'web-ifc';
+
         let chartTiposInstance = null;
         let chartOcupantesInstance = null;
         const colorPalette = ['#7b71d9', '#5a51a8', '#9d94ed', '#423b82', '#b8b2f2', '#342f5c'];
 
-        function mostrarErroGlobal(mensagem, erro = null) {
-            const errDiv = document.getElementById('erro-global');
-            errDiv.style.display = 'block';
-            errDiv.innerHTML = `<strong>AVISO:</strong> ${mensagem}`;
-            if (erro) console.error(erro);
+        function setStatus(text) {
+            document.getElementById('status-3d').innerText = text;
         }
 
-        function setStatus3D(texto) {
-            const status = document.getElementById('status-3d');
-            if (status) status.innerText = texto;
-        }
-
-        function setLoading(show, texto = 'Processando...') {
+        function setLoading(show, text = 'Processando...') {
             const overlay = document.getElementById('loading-overlay');
-            if (!overlay) return;
             overlay.style.display = show ? 'flex' : 'none';
-            const loadingText = document.getElementById('loading-text');
-            if (loadingText) loadingText.innerText = texto;
+            document.getElementById('loading-text').innerText = text;
         }
 
         function initCharts() {
@@ -125,17 +113,16 @@
             chartTiposInstance = new Chart(ctxTipos, {
                 type: 'doughnut',
                 data: { labels: [], datasets: [{ data: [], backgroundColor: colorPalette, borderWidth: 0 }] },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#e2e8f0', boxWidth: 12 } } }, cutout: '65%' }
+                options: { responsive: true, maintainAspectRatio: false, cutout: '65%' }
             });
 
             const ctxOcupantes = document.getElementById('chartOcupantes').getContext('2d');
             chartOcupantesInstance = new Chart(ctxOcupantes, {
                 type: 'bar',
                 data: { labels: [], datasets: [{ data: [], backgroundColor: '#7b71d9', borderRadius: 2 }] },
-                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' } }, y: { grid: { display: false } } } }
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
         }
-
         initCharts();
 
         document.getElementById('upload-json').addEventListener('change', (e) => {
@@ -145,41 +132,32 @@
             reader.onload = (event) => {
                 try {
                     const parsed = JSON.parse(event.target.result);
-                    const data = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.dados) ? parsed.dados : Array.isArray(parsed?.data) ? parsed.data : null);
-                    if (!data) throw new Error('O JSON precisa conter uma lista de registros.');
-
+                    const data = Array.isArray(parsed) ? parsed : (parsed.dados || parsed.data || []);
                     let totalArea = 0;
-                    const tiposCount = {};
-                    const ocupantesArea = {};
+                    const tiposCount = {}, ocupantesArea = {};
 
                     data.forEach(item => {
-                        let areaValue = 0;
-                        if (typeof item.area === 'string') areaValue = parseFloat(item.area.replace(',', '.').replace(/[^0-9.-]+/g, ''));
-                        else areaValue = parseFloat(item.area);
-                        
-                        if (isNaN(areaValue)) areaValue = 0;
-                        totalArea += areaValue;
-
-                        const tipo = (item.tipo_area_urbanizada && item.tipo_area_urbanizada !== 'Não definido') ? item.tipo_area_urbanizada : 'Não Classificado';
-                        tiposCount[tipo] = (tiposCount[tipo] || 0) + areaValue;
-
-                        const ocupante = (item.ocupante && item.ocupante !== 'Não definido') ? item.ocupante : 'Sem Ocupante';
-                        ocupantesArea[ocupante] = (ocupantesArea[ocupante] || 0) + areaValue;
+                        let val = typeof item.area === 'string' ? parseFloat(item.area.replace(',', '.').replace(/[^0-9.-]+/g, '')) : parseFloat(item.area);
+                        if (isNaN(val)) val = 0;
+                        totalArea += val;
+                        const t = item.tipo_area_urbanizada || 'Não Classificado';
+                        tiposCount[t] = (tiposCount[t] || 0) + val;
+                        const oc = item.ocupante || 'Sem Ocupante';
+                        ocupantesArea[oc] = (ocupantesArea[oc] || 0) + val;
                     });
 
-                    document.getElementById('kpi-area').innerText = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalArea) + ' m²';
-
+                    document.getElementById('kpi-area').innerText = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(totalArea) + ' m²';
                     chartTiposInstance.data.labels = Object.keys(tiposCount);
                     chartTiposInstance.data.datasets[0].data = Object.values(tiposCount);
                     chartTiposInstance.update();
 
-                    const sortedOcupantes = Object.entries(ocupantesArea).sort((a, b) => b[1] - a[1]);
-                    chartOcupantesInstance.data.labels = sortedOcupantes.map(x => x[0]);
-                    chartOcupantesInstance.data.datasets[0].data = sortedOcupantes.map(x => x[1]);
+                    const sorted = Object.entries(ocupantesArea).sort((a, b) => b[1] - a[1]);
+                    chartOcupantesInstance.data.labels = sorted.map(x => x[0]);
+                    chartOcupantesInstance.data.datasets[0].data = sorted.map(x => x[1]);
                     chartOcupantesInstance.update();
-                    
-                    document.getElementById('lbl-json').style.backgroundColor = '#7b71d9';
+
                     document.getElementById('lbl-json').innerText = '✓ JSON Carregado';
+                    document.getElementById('lbl-json').style.backgroundColor = '#7b71d9';
                 } catch (err) {
                     alert('Erro JSON: ' + err.message);
                 }
@@ -187,94 +165,142 @@
             reader.readAsText(file, 'windows-1252');
         });
 
-        // Motor 3D Limpo
-        async function load3DEngine() {
-            setLoading(true, 'Iniciando arquitetura 3D...');
-            setStatus3D('Motor 3D: conectando bibliotecas...');
+        // MOTOR 3D INDEPENDENTE NATIVO
+        const container = document.getElementById('viewer-3d');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#29254c');
+
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(50, 50, 50);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(50, 100, 50);
+        scene.add(dirLight);
+
+        const grid = new THREE.GridHelper(100, 50, 0x7b71d9, 0x3d3766);
+        scene.add(grid);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // INICIALIZA O MOTOR WEB-IFC
+        const ifcAPI = new WebIFC.IfcAPI();
+        ifcAPI.SetWasmPath("https://esm.sh/web-ifc@0.0.57/", true);
+
+        async function initEngine() {
+            try {
+                await ifcAPI.Init();
+                setStatus('Motor 3D Nativo: Pronto');
+            } catch (e) {
+                setStatus('Falha ao inicializar WASM: ' + e.message);
+            }
+        }
+        initEngine();
+
+        let modelGroup = new THREE.Group();
+        scene.add(modelGroup);
+
+        document.getElementById('upload-ifc').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            setLoading(true, 'Convertendo geometria IFC...');
+            setStatus('Lendo arquivo IFC...');
 
             try {
-                const THREE = await import('three');
-                const OBC = await import('@thatopen/components');
+                const data = await file.arrayBuffer();
+                const buffer = new Uint8Array(data);
+                const modelID = ifcAPI.OpenModel(buffer);
 
-                const container = document.getElementById('viewer-3d');
-                const components = new OBC.Components();
-                const worlds = components.get(OBC.Worlds);
-                const world = worlds.create();
+                // Limpa modelo anterior
+                while(modelGroup.children.length > 0){ 
+                    const obj = modelGroup.children[0];
+                    obj.geometry.dispose();
+                    modelGroup.remove(obj); 
+                }
 
-                world.scene = new OBC.SimpleScene(components);
-                world.scene.setup({ backgroundColor: '#29254c' });
+                // Carrega todas as geometrias do IFC diretamente na cena
+                ifcAPI.StreamAllMeshes(modelID, (mesh) => {
+                    const placedGeom = ifcAPI.GetFlatMesh(modelID, mesh.expressID);
+                    const size = placedGeom.geometries.size();
+                    for (let i = 0; i < size; i++) {
+                        const geomData = placedGeom.geometries.get(i);
+                        const geometry = new THREE.BufferGeometry();
+                        const pData = ifcAPI.GetGeometry(modelID, geomData.geometryExpressID);
+                        
+                        const verts = ifcAPI.GetVertexArray(pData.GetVertexData(), pData.GetVertexDataSize());
+                        const idx = ifcAPI.GetIndexArray(pData.GetIndexData(), pData.GetIndexDataSize());
 
-                world.renderer = new OBC.SimpleRenderer(components, container);
-                world.camera = new OBC.SimpleCamera(components);
-
-                components.init();
-
-                window.addEventListener('resize', () => {
-                    world.renderer.resize();
-                    world.camera.updateAspect();
-                });
-
-                // Luzes do ambiente
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-                directionalLight.position.set(20, 50, 20);
-                world.scene.three.add(directionalLight);
-                world.scene.three.add(new THREE.AmbientLight(0xffffff, 0.5));
-
-                const fragments = components.get(OBC.FragmentsManager);
-                const ifcLoader = components.get(OBC.IfcLoader);
-                await ifcLoader.setup(); // Trata do WASM automaticamente sem erros fs
-
-                let currentModel = null;
-
-                document.getElementById('upload-ifc').addEventListener('change', async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-
-                    setLoading(true, 'Lendo Geometria do Galpão...');
-                    setStatus3D('Motor 3D: extraindo IFC...');
-
-                    try {
-                        if (currentModel) {
-                            world.scene.three.remove(currentModel);
-                            fragments.dispose();
+                        const pos = new Float32Array(verts.length / 2);
+                        for (let k = 0; k < verts.length; k += 6) {
+                            pos[k / 2] = verts[k];
+                            pos[k / 2 + 1] = verts[k + 1];
+                            pos[k / 2 + 2] = verts[k + 2];
                         }
 
-                        const data = await file.arrayBuffer();
-                        const buffer = new Uint8Array(data);
+                        geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                        geometry.setIndex(Array.from(idx));
+                        geometry.computeVertexNormals();
 
-                        currentModel = await ifcLoader.load(buffer);
-                        world.scene.three.add(currentModel);
+                        const color = geomData.color;
+                        const mat = new THREE.MeshStandardMaterial({
+                            color: new THREE.Color(color.x, color.y, color.z),
+                            opacity: color.w,
+                            transparent: color.w < 1,
+                            side: THREE.DoubleSide
+                        });
 
-                        // Enquadra o modelo na câmara
-                        const box = new THREE.Box3().setFromObject(currentModel);
-                        const sphere = new THREE.Sphere();
-                        box.getBoundingSphere(sphere);
-                        world.camera.controls.fitToSphere(sphere, true);
-
-                        document.getElementById('lbl-ifc').style.backgroundColor = '#7b71d9';
-                        document.getElementById('lbl-ifc').innerText = '✓ IFC Carregado';
-                        setStatus3D('Motor 3D: pronto');
-                    } catch (error) {
-                        console.error(error);
-                        alert('Falha ao renderizar geometria IFC.');
-                        setStatus3D('Erro de renderização');
-                    } finally {
-                        setLoading(false);
+                        const threeMesh = new THREE.Mesh(geometry, mat);
+                        const m = geomData.flatTransformation;
+                        const mat4 = new THREE.Matrix4().fromArray(m);
+                        threeMesh.applyMatrix4(mat4);
+                        modelGroup.add(threeMesh);
                     }
                 });
 
-                setStatus3D('Motor 3D: aguardando modelo');
-                setLoading(false);
+                ifcAPI.CloseModel(modelID);
 
+                // Centraliza a câmera no modelo
+                const box = new THREE.Box3().setFromObject(modelGroup);
+                const center = box.getCenter(new THREE.Vector3());
+                const sizeBox = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(sizeBox.x, sizeBox.y, sizeBox.z);
+
+                controls.target.copy(center);
+                camera.position.set(center.x + maxDim, center.y + maxDim, center.z + maxDim);
+                camera.lookAt(center);
+                controls.update();
+
+                document.getElementById('lbl-ifc').innerText = '✓ IFC Carregado';
+                document.getElementById('lbl-ifc').style.backgroundColor = '#7b71d9';
+                setStatus('Modelo carregado com sucesso!');
             } catch (err) {
                 console.error(err);
+                alert('Erro ao carregar geometria do IFC: ' + err.message);
+                setStatus('Erro no processamento do IFC');
+            } finally {
                 setLoading(false);
-                setStatus3D('Motor 3D: indisponível');
-                mostrarErroGlobal('Falha ao iniciar. Os gráficos JSON continuam ativos. Erro: ' + err.message);
             }
-        }
-
-        load3DEngine();
+        });
     </script>
 </body>
 </html>
