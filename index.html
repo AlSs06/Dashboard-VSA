@@ -10,15 +10,14 @@
 
     <!-- 
       SOLUÇÃO DEFINITIVA: 
-      O mapeamento "three/" ensina o navegador a resolver as subpastas 
-      exigidas pelo web-ifc-viewer, eliminando o erro de BufferGeometryUtils.
+      O servidor JSPM resolve nativamente todos os conflitos de dependências (como o 'fs' do Node.js), 
+      entregando o pacote perfeitamente formatado para o navegador.
     -->
     <script type="importmap">
     {
         "imports": {
-            "three": "https://esm.sh/three@0.135.0",
-            "three/": "https://esm.sh/three@0.135.0/",
-            "web-ifc-viewer": "https://esm.sh/web-ifc-viewer@1.0.218?external=three"
+            "three": "https://jspm.dev/three@0.135.0",
+            "web-ifc-viewer": "https://jspm.dev/web-ifc-viewer@1.0.218"
         }
     }
     </script>
@@ -198,11 +197,15 @@
 
             try {
                 const THREE = await import('three');
-                const { IfcViewerAPI } = await import('web-ifc-viewer');
+                const viewerMod = await import('web-ifc-viewer');
+                
+                // Extração inteligente à prova de quebras, dependendo de como o JSPM estrutura o módulo
+                const IfcViewerAPI = viewerMod.IfcViewerAPI || viewerMod.default.IfcViewerAPI;
 
                 const container = document.getElementById('viewer-3d');
                 const viewer = new IfcViewerAPI({ container, backgroundColor: new THREE.Color(0x29254c) });
                 
+                // Caminho rigoroso para os núcleos C++ compilados
                 viewer.IFC.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/');
 
                 document.getElementById('upload-ifc').addEventListener('change', async (e) => {
